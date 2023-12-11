@@ -1,0 +1,316 @@
+#include <Servo.h>
+
+#define trig1 12
+#define echo1 11 
+#define trig0 10
+#define echo0 9   
+#define trig3 27
+#define echo3 26
+#define trig2 35
+#define echo2 34
+
+#define IR0 22
+#define IR1 A0//11
+#define IR2 A1//12
+#define IR3 A2//13
+#define IR4 A3//2
+#define IR5 A4//3
+#define IR6 A5//4
+#define IR7 23
+
+#define ENA 2//5  //RIGHT
+#define motorInput1 3//7 
+#define motorInput2 4//8
+#define motorInput3 6//9
+#define motorInput4 5//10
+#define ENB 7//6
+
+#define MAX_SPEED 255
+#define MAX_DISTANCE 25
+
+int IR_val[] = {0, 0, 0, 0, 0, 0, 0, 0};
+int IR_weights[8] = {0, -15, -10, -5, 5, 10, 15, 0};
+
+int LMotor = 0;
+int RMotor = 0;
+int speedAdjust = 0;
+int baseSpeed = 85; //final = 75
+
+float P, I, D;
+float error = 0;
+float previousError = 0;
+float Kp = 12;//{5.5-,1+,3++,4+} final = 3.5
+float Kd = 0.1;//10, 1 final = 6
+float Ki = 0; //final = 0
+
+float sensor1 = 0;
+float sensor2 = 0;
+float sensor3 = 0;
+float sensor4 = 0;
+
+float frontLeftDistance;
+float frontRightDistance;
+float rightDistance;
+float leftDistance;
+
+// Define obstacle detection thresholds
+int frontObstacleThreshold = 10; // Adjust this value based on your sensors and robot
+int leftObstacleThreshold = 10;  // Adjust this value based on your sensors and robot
+
+Servo myservoUp;
+Servo myservoDown;
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(trig0, OUTPUT);
+  pinMode(echo0, INPUT);
+  pinMode(trig1, OUTPUT);
+  pinMode(echo1, INPUT);
+  pinMode(trig2, OUTPUT);
+  pinMode(echo2, INPUT);
+  pinMode(trig3, OUTPUT);
+  pinMode(echo3, INPUT);
+
+  pinMode(IR0, INPUT);
+  pinMode(IR1, INPUT);
+  pinMode(IR2, INPUT);
+  pinMode(IR3, INPUT);
+  pinMode(IR4, INPUT);
+  pinMode(IR5, INPUT);
+  pinMode(IR6, INPUT);
+  pinMode(IR7, INPUT);
+
+  pinMode(ENA, OUTPUT);
+  pinMode(motorInput1, OUTPUT);
+  pinMode(motorInput2, OUTPUT);
+
+  pinMode(ENB, OUTPUT);
+  pinMode(motorInput3, OUTPUT);
+  pinMode(motorInput4, OUTPUT);
+
+  myservoUp.attach(8);
+  myservoDown.attach(13);
+delay(500);
+myservoDown.write(80);
+delay(1000);
+myservoUp.write(100);
+delay(2000);
+
+
+
+  set_forward();
+  delay(200);
+}
+
+int countU = 1;
+
+void loop() {
+  // stop();
+  set_forward();
+      lineFollow();
+  sensor1 = readUltrasonic(trig0, echo0);
+  sensor2 = readUltrasonic(trig1, echo1);
+  sensor3 = readUltrasonic(trig2, echo2);
+  sensor4 = readUltrasonic(trig3, echo3);
+
+  if (sensor1<0){sensor1=0;}
+  if (sensor2<0){sensor2=0;}
+  if (sensor3<0){sensor3=0;}
+  if (sensor4<0){sensor4=0;}
+
+  Serial.print(sensor1);
+   Serial.print(" ");
+    Serial.print(sensor2);
+    Serial.print(" ");
+    Serial.print(sensor3);
+   Serial.print(" ");
+    Serial.print(sensor4);
+    Serial.println(" ");
+
+    if(( sensor2<17 || sensor3<17) && (sensor2!=0) && (sensor3!=0)) {
+      if (countU == 1){
+      turnLeft();
+      delay(2900); //2500
+      read_IR();
+      while(!(IR_val[1]==0 || IR_val[2]==0 || IR_val[3]==0 || IR_val[4]==0 || IR_val[5]==0 || IR_val[6]==0)){
+        read_IR();
+        moveForward();  
+        set_forward();
+        //delay(1000);
+      //   Serial.println( "Leturn");
+     }
+      lineFollow();
+      
+      countU = 2;
+      }
+      else if (countU == 2){
+      turnRight();
+      delay(2900); //2500
+      read_IR();
+       while(!(IR_val[1]==0 || IR_val[2]==0 || IR_val[3]==0 || IR_val[4]==0 || IR_val[5]==0 || IR_val[6]==0 )){
+        read_IR();
+        moveForward();
+        set_forward();
+        //delay(1500);
+        Serial.println( "Riturn");
+      }
+      countU = 3;
+      }
+    }
+
+      set_forward();
+      lineFollow();
+
+ }
+
+void lineFollow(){
+  read_IR();
+  if (IR_val[0]==0 && IR_val[1]==0 && IR_val[2]==0 && IR_val[3]==0 && IR_val[4]==0 && IR_val[5]==0 && IR_val[6]==0 && IR_val[7]==0){
+    //analogWrite(ENB, 50);
+    //delay(100);
+    stop();
+  }
+  PID_control();
+  set_speed();
+}
+
+float readUltrasonic(int trigPin, int echoPin){
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  int duration = pulseIn(echoPin, HIGH);
+  float distance = duration * 0.034 / 2;
+  if (duration>0){
+    return distance;
+  }
+}
+
+void moveBackward() {
+  analogWrite(ENA, 75);
+  analogWrite(ENB, 75);
+
+  digitalWrite(motorInput1, HIGH);
+  digitalWrite(motorInput2, LOW);
+  digitalWrite(motorInput3, LOW);
+  digitalWrite(motorInput4, HIGH);
+}
+
+void turnRight(){
+  analogWrite(ENA, 40);
+  analogWrite(ENB, 95);
+
+  digitalWrite(motorInput1, HIGH);
+  digitalWrite(motorInput2, LOW);
+  digitalWrite(motorInput3, HIGH);
+  digitalWrite(motorInput4, LOW);
+ //adjust the delay
+  // Serial.println("Rturn");
+}
+
+void turnLeft(){
+  analogWrite(ENA, 150);
+  analogWrite(ENB, 40);
+
+  digitalWrite(motorInput1, LOW);
+  digitalWrite(motorInput2, HIGH);
+  digitalWrite(motorInput3, LOW);
+  digitalWrite(motorInput4, HIGH);
+   //adjust the delay
+  
+}
+
+void read_IR(){
+   IR_val[0] = digitalRead(IR0);
+  IR_val[1] = digitalRead(IR1);
+  IR_val[2] = digitalRead(IR2);
+  IR_val[3] = digitalRead(IR3);
+  IR_val[4] = digitalRead(IR4);
+  IR_val[5] = digitalRead(IR5);
+  IR_val[6] = digitalRead(IR6);
+  IR_val[7] = digitalRead(IR7);
+}
+
+void PID_control() {
+  error = 0;
+
+  for (int i = 0; i < 6; i++)
+  {
+    error += IR_weights[i]*IR_val[i];
+  }
+  P = error;
+  I = I + error; 
+  D = error - previousError;
+
+  previousError = error;
+
+  speedAdjust = (Kp*P + Ki*I + Kd*D);;
+
+  RMotor = baseSpeed + speedAdjust;
+  LMotor = baseSpeed - speedAdjust;
+
+  if (IR_val[1]==1 && IR_val[6]==1){
+    if (RMotor<10){
+      RMotor = 10;
+  }
+    if (LMotor<10){
+        LMotor = 10;
+    }
+  }
+
+  else {
+  if (RMotor<0){
+    analogWrite(ENA, 50);
+    analogWrite(ENB, LMotor);
+
+    digitalWrite(motorInput1, HIGH);
+    digitalWrite(motorInput2, LOW);
+    digitalWrite(motorInput3, HIGH);
+    digitalWrite(motorInput4, LOW);
+  }
+  if (LMotor<0){
+    analogWrite(ENA, RMotor);
+    analogWrite(ENB, 50);
+
+    digitalWrite(motorInput1, LOW);
+    digitalWrite(motorInput2, HIGH);
+    digitalWrite(motorInput3, LOW);
+    digitalWrite(motorInput4, HIGH);
+  }
+  }
+  if (LMotor>MAX_SPEED){
+    LMotor = MAX_SPEED;
+  }
+  if (RMotor>MAX_SPEED){
+    RMotor = MAX_SPEED;
+  }
+//   Serial.print(LMotor);
+//   Serial.print(" ");
+//   Serial.println(RMotor);
+}
+
+void set_speed(){
+  analogWrite(ENA, RMotor);
+  analogWrite(ENB, LMotor);
+}
+
+void set_forward(){
+  digitalWrite(motorInput1, LOW);
+  digitalWrite(motorInput2, HIGH);
+  digitalWrite(motorInput3, HIGH);
+  digitalWrite(motorInput4, LOW);
+}
+
+void stop(){
+  digitalWrite(motorInput1, LOW);
+  digitalWrite(motorInput2, LOW);
+  digitalWrite(motorInput3, LOW);
+  digitalWrite(motorInput4, LOW);
+}
+
+void moveForward(){
+  analogWrite(ENA, 90);
+  analogWrite(ENB, 90);
+  set_forward();
+}
